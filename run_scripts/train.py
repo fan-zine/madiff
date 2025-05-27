@@ -11,12 +11,14 @@ from diffuser.utils.launcher_util import (
 
 
 def main(Config, RUN):
+    # 设置PyTorch确定性计算（确保实验可复现）
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     utils.set_seed(Config.seed)
     dataset_extra_kwargs = dict()
 
     # configs that does not exist in old yaml files
+    # 处理旧版本配置文件的兼容性
     Config.discrete_action = getattr(Config, "discrete_action", False)
     Config.state_loss_weight = getattr(Config, "state_loss_weight", None)
     Config.opponent_loss_weight = getattr(Config, "opponent_loss_weight", None)
@@ -38,13 +40,14 @@ def main(Config, RUN):
     # -----------------------------------------------------------------------------#
     # ---------------------------------- dataset ----------------------------------#
     # -----------------------------------------------------------------------------#
+    # 创建数据集配置对象
     dataset_config = utils.Config(
         Config.loader,
         savepath="dataset_config.pkl",
         env_type=Config.env_type,
         env=Config.dataset,
-        n_agents=Config.n_agents,
-        horizon=Config.horizon,
+        n_agents=Config.n_agents,   #agents数量
+        horizon=Config.horizon,     #预测的未来步长
         history_horizon=Config.history_horizon,
         normalizer=Config.normalizer,
         preprocess_fns=Config.preprocess_fns,
@@ -71,6 +74,7 @@ def main(Config, RUN):
         **dataset_extra_kwargs,
     )
 
+    # 构建渲染器和数据编码器配置
     render_config = utils.Config(
         Config.renderer,
         savepath="render_config.pkl",
@@ -91,6 +95,7 @@ def main(Config, RUN):
     # -----------------------------------------------------------------------------#
     # ------------------------------ model & trainer ------------------------------#
     # -----------------------------------------------------------------------------#
+    # 主模型
     model_config = utils.Config(
         Config.model,
         savepath="model_config.pkl",
@@ -109,6 +114,7 @@ def main(Config, RUN):
         device=Config.device,
     )
 
+    # 扩散过程配置
     diffusion_config = utils.Config(
         Config.diffusion,
         savepath="diffusion_config.pkl",
@@ -119,9 +125,9 @@ def main(Config, RUN):
         action_dim=action_dim,
         discrete_action=Config.discrete_action,
         num_actions=getattr(dataset.env, "num_actions", 0),
-        n_timesteps=Config.n_diffusion_steps,
-        clip_denoised=Config.clip_denoised,
-        predict_epsilon=Config.predict_epsilon,
+        n_timesteps=Config.n_diffusion_steps,   # 扩散步数：200
+        clip_denoised=Config.clip_denoised, # 是否将去噪结果截断到[-1,1]
+        predict_epsilon=Config.predict_epsilon, # 模型预测噪声
         hidden_dim=Config.hidden_dim,
         train_only_inv=Config.train_only_inv,
         share_inv=Config.share_inv,
@@ -139,6 +145,7 @@ def main(Config, RUN):
         device=Config.device,
     )
 
+    # 训练器配置
     trainer_config = utils.Config(
         utils.Trainer,
         savepath="trainer_config.pkl",
@@ -170,6 +177,7 @@ def main(Config, RUN):
 
     model = model_config()
     diffusion = diffusion_config(model)
+    # 实例化训练器
     trainer = trainer_config(diffusion, dataset, renderer)
 
     if Config.eval_freq > 0:
@@ -177,6 +185,7 @@ def main(Config, RUN):
         evaluator.init(log_dir=logger.prefix)
         trainer.set_evaluator(evaluator)
 
+    # 断点续训支持
     if Config.continue_training:
         loadpath = discover_latest_checkpoint_path(
             os.path.join(trainer.bucket, logger.prefix, "checkpoint")
@@ -195,6 +204,7 @@ def main(Config, RUN):
     # ------------------------ test forward & backward pass -----------------------#
     # -----------------------------------------------------------------------------#
 
+    # 参数报告和前向传播测试
     utils.report_parameters(model)
 
     logger.print("Testing forward...", end=" ", flush=True)
@@ -207,12 +217,14 @@ def main(Config, RUN):
     # --------------------------------- main loop ---------------------------------#
     # -----------------------------------------------------------------------------#
 
+    # 主训练循环
     n_epochs = int((Config.n_train_steps - trainer.step) // Config.n_steps_per_epoch)
 
     for i in range(n_epochs):
         logger.print(f"Epoch {i} / {n_epochs} | {logger.prefix}")
         trainer.train(n_train_steps=Config.n_steps_per_epoch)
     trainer.finish_training()
+    # TODO 大概看到这儿了
 
 
 if __name__ == "__main__":
