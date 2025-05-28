@@ -19,7 +19,7 @@ class GaussianDiffusion(nn.Module):
         history_horizon: int,
         observation_dim: int,
         action_dim: int,
-        use_inv_dyn: bool = True,
+        # use_inv_dyn: bool = True,
         discrete_action: bool = False,
         num_actions: int = 0,  # for discrete action space
         n_timesteps: int = 1000,
@@ -59,7 +59,7 @@ class GaussianDiffusion(nn.Module):
         self.num_actions = num_actions
         self.transition_dim = observation_dim + action_dim
         self.model = model
-        self.use_inv_dyn = use_inv_dyn
+        # self.use_inv_dyn = use_inv_dyn
         self.train_only_inv = train_only_inv
         self.share_inv = share_inv
         self.joint_inv = joint_inv
@@ -276,6 +276,7 @@ class GaussianDiffusion(nn.Module):
 
     # ------------------------------------------ training ------------------------------------------#
 
+    # 前向扩散过程
     def p_losses(
         self,
         x_start: torch.Tensor,
@@ -287,12 +288,14 @@ class GaussianDiffusion(nn.Module):
         env_ts: Optional[torch.Tensor] = None,
         states: Optional[torch.Tensor] = None,
     ):
+        # 添加噪声
         noise = torch.randn_like(x_start)
-
         x_noisy = self.noise_scheduler.add_noise(x_start, noise, t)
+        # 应用条件约束
         x_noisy = apply_conditioning(x_noisy, cond)
+        # 编码数据
         x_noisy = self.data_encoder(x_noisy)
-
+        # U-Net预测
         epsilon = self.model(
             x_noisy,
             t,
@@ -307,6 +310,7 @@ class GaussianDiffusion(nn.Module):
 
         assert noise.shape == epsilon.shape
 
+        # 计算损失
         if self.predict_epsilon:
             loss, info = self.loss_fn(epsilon, noise)
         else:
@@ -322,6 +326,7 @@ class GaussianDiffusion(nn.Module):
                 )
             )
             opponent_loss_weight.scatter_(dim=2, index=indices, value=1)
+            # 多智能体加权
             loss = loss * opponent_loss_weight
 
         # TODO(zbzhu): Check these two '.mean()'
@@ -329,6 +334,7 @@ class GaussianDiffusion(nn.Module):
             (loss * loss_masks).mean(dim=[1, 2]) / loss_masks.mean(dim=[1, 2])
         ).mean()
 
+        # 回报引导损失
         if self.returns_loss_guided:
             returns_loss = self.r_losses(x_noisy, t, epsilon, cond)
             info["returns_loss"] = returns_loss

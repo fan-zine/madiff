@@ -81,6 +81,7 @@ def main(Config, RUN):
         env_type=Config.env_type,
         env=Config.dataset,
     )
+    # 输入：原始状态动作序列 (shape: [batch, horizon, feature_dim])
     data_encoder_config = utils.Config(
         getattr(Config, "data_encoder", "utils.IdentityEncoder"),
         savepath="data_encoder_config.pkl",
@@ -224,7 +225,6 @@ def main(Config, RUN):
         logger.print(f"Epoch {i} / {n_epochs} | {logger.prefix}")
         trainer.train(n_train_steps=Config.n_steps_per_epoch)
     trainer.finish_training()
-    # TODO 大概看到这儿了
 
 
 if __name__ == "__main__":
